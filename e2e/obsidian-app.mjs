@@ -6,6 +6,15 @@ import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 
 const execute = promisify(execFile);
+const STORAGE_ERROR_PATTERNS = [
+	["secret-decryption-failed", /Failed to decrypt secrets/i],
+	["secret-loading-failed", /Failed to load secrets/i],
+	["secure-storage-unavailable", /Secure storage is not available|safeStorage.*encryption is not available/i],
+	["safe-storage-encryption-failed", /Error.*encrypt.*safeStorage|safeStorage.*encrypt.*(?:failed|error)/i],
+	["safe-storage-decryption-failed", /Error.*decrypt.*safeStorage|safeStorage.*decrypt.*(?:failed|error)/i],
+	["windows-data-protection-failed", /(?:CryptProtectData|CryptUnprotectData|DPAPI|OSCrypt).*(?:failed|error)|(?:failed|error).*(?:CryptProtectData|CryptUnprotectData|DPAPI|OSCrypt)/i],
+	["browser-storage-failed", /(?:localStorage|IndexedDB|leveldb).*(?:failed|error)/i],
+];
 
 async function availablePort() {
 	const server = createServer();
@@ -37,22 +46,48 @@ export async function prepareVault(root) {
 	return { vault, profile };
 }
 
-export async function launchObsidian({ profile, executablePath }) {
+export async function launchObsidian({ profile, executablePath, secretStorageDiagnostics = [] }) {
 	const port = await availablePort();
 	const child = spawn(executablePath, [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "--no-sandbox"], {
 		stdio: ["ignore", "pipe", "pipe"],
 	});
-	let log = "";
-	child.stdout.on("data", (data) => { log += data; });
-	child.stderr.on("data", (data) => { log += data; });
+	const diagnostics = { platform: process.platform, processId: child.pid, snapshots: [], errors: [] };
+	secretStorageDiagnostics.push(diagnostics);
+	const recordStorageError = (source, message) => {
+		for (const [category, pattern] of STORAGE_ERROR_PATTERNS) {
+			if (pattern.test(message) && !diagnostics.errors.some((error) => error.source === source && error.category === category)) {
+				diagnostics.errors.push({ source, category });
+			}
+		}
+	};
+	let nativeLogTail = "";
+	const inspectNativeLog = (data) => {
+		nativeLogTail = (nativeLogTail + data.toString()).slice(-4096);
+		recordStorageError("native", nativeLogTail);
+	};
+	child.stdout.on("data", inspectNativeLog);
+	child.stderr.on("data", inspectNativeLog);
 	const endpoint = `http://127.0.0.1:${port}`;
 	let browser;
 	try {
 		await expect.poll(async () => {
-			if (child.exitCode !== null) throw new Error(`Obsidian exited (${child.exitCode}): ${log}`);
+			if (child.exitCode !== null) throw new Error(`Obsidian exited (${child.exitCode}); storage error categories: ${diagnostics.errors.map((error) => error.category).join(", ")}`);
 			try { return (await fetch(`${endpoint}/json/version`)).status; } catch { return 0; }
 		}, { timeout: 30_000 }).toBe(200);
 		browser = await chromium.connectOverCDP(endpoint);
+		for (const context of browser.contexts()) {
+			const captureStorageErrors = async (page) => {
+				const session = await context.newCDPSession(page);
+				session.on("Runtime.consoleAPICalled", (event) => {
+					if (event.type !== "error") return;
+					for (const argument of event.args) recordStorageError("renderer-console", String(argument.value ?? argument.description ?? ""));
+				});
+				session.on("Runtime.exceptionThrown", (event) => recordStorageError("renderer-exception", event.exceptionDetails.exception?.description ?? event.exceptionDetails.text));
+				await session.send("Runtime.enable");
+			};
+			context.on("page", (page) => { void captureStorageErrors(page).catch(() => undefined); });
+			await Promise.all(context.pages().map(captureStorageErrors));
+		}
 		await expect.poll(() => browser.contexts().flatMap((context) => context.pages()).some((page) => page.url().endsWith("/index.html"))).toBe(true);
 		const page = browser.contexts().flatMap((context) => context.pages()).find((candidate) => candidate.url().endsWith("/index.html"));
 		await page.waitForFunction(() => Boolean(window.app?.vault));
@@ -60,6 +95,34 @@ export async function launchObsidian({ profile, executablePath }) {
 		await expect.poll(async () => (await trust.isVisible()) || await page.evaluate(() => Boolean(app.plugins.plugins.readplace))).toBe(true);
 		if (await trust.isVisible()) await trust.click();
 		await page.waitForFunction(() => Boolean(app.plugins.plugins.readplace));
+		const captureSecretStorage = async (phase) => {
+			try {
+				const snapshot = await page.evaluate((expectedProfile) => {
+					const storage = app.secretStorage;
+					const encrypted = app.loadLocalStorage("secrets-encrypted");
+					const remote = window.electron?.remote;
+					const appId = typeof app.appId === "string" && /^[a-f0-9]{16}$/.test(app.appId) ? app.appId : "unexpected-format";
+					const ids = storage.listSecrets();
+					return {
+						appId,
+						profileMatches: remote?.app ? remote.app.getPath("userData") === expectedProfile : null,
+						encryptionAvailable: remote?.safeStorage ? remote.safeStorage.isEncryptionAvailable() : null,
+						secretIdCount: ids.length,
+						accessTokenListed: ids.includes("readplace-access-token"),
+						refreshTokenListed: ids.includes("readplace-refresh-token"),
+						accessTokenPresent: Boolean(storage.peekSecret("readplace-access-token")),
+						refreshTokenPresent: Boolean(storage.peekSecret("readplace-refresh-token")),
+						encryptedEntryPresent: typeof encrypted === "string",
+						encryptedEntryLength: typeof encrypted === "string" ? encrypted.length : 0,
+						legacyEntryPresent: app.loadLocalStorage("secrets") !== null,
+					};
+				}, profile);
+				diagnostics.snapshots.push({ phase, ...snapshot });
+			} catch {
+				diagnostics.snapshots.push({ phase, unavailable: true });
+			}
+		};
+		await captureSecretStorage("after-start");
 		return {
 			browser, page,
 			async notices() {
@@ -87,6 +150,7 @@ export async function launchObsidian({ profile, executablePath }) {
 			async close() {
 				try {
 					if (child.exitCode === null && child.signalCode === null) {
+						await captureSecretStorage("before-close");
 						if (process.platform === "win32") {
 							for (const other of browser.contexts().flatMap((context) => context.pages())) {
 								if (other !== page) await other.close();

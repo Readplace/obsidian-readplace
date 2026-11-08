@@ -104,6 +104,8 @@ The HTTP server in this suite is a controlled fixture. It checks the application
 
 The [recorded macOS run](./docs/automation/macos.json) passed. The Desktop E2E workflow runs the same suite on macOS, Windows, and Linux's Debian and AppImage distributions, and uploads screenshots and results. See [Contributing](./CONTRIBUTING.md) for running it locally. Mobile, live staging and production authentication, two-device Obsidian Sync, and a live 2,000-save benchmark remain release checks.
 
+An optional [2,000-article macOS run](./docs/automation/macos-2000-articles.json) wrote 26.2 MB of fixture Markdown in 21.2 seconds. Its repeated sync took 3.0 seconds and downloaded no Markdown. These timings describe a local fixture with two articles per page; they do not predict live-account performance.
+
 ## License
 
 [MIT](./LICENSE), copyright Proficient Pty Ltd.

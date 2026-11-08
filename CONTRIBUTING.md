@@ -28,6 +28,8 @@ Fresh CI runners set `OBSIDIAN_PROFILE` to the application's normal profile dire
 
 Results are in `test-results/results.json`, with screenshots and `evidence.json` in each test's output directory. Failed runs also produce a Playwright trace. The workflow uploads only these evidence files, never the application profiles or vaults.
 
+Run `READPLACE_BENCHMARK_ARTICLES=2000 npm run test:e2e` to add a scale check with 2,000 additional articles of 10–20 KB each. It verifies the exact Markdown written to every note and checks that a repeated sync downloads no Markdown. The test allows up to ten minutes and records elapsed time, request counts, and Markdown bytes in `evidence.json`. This uses real Obsidian with the controlled local HTTP fixture; it does not measure a live Readplace account or network performance. Live validation with about 2,000 saves remains a separate check. The scale check is off by default.
+
 For live staging validation, build with `READPLACE_SERVER_ORIGIN=https://hkncrxpii6.execute-api.ap-southeast-2.amazonaws.com npm run build`. A plain `npm run build` targets production. The origin is compiled into the bundle and is not a reader setting.
 
 ## Conventions

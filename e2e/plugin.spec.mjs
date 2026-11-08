@@ -10,8 +10,11 @@ const execute = promisify(execFile);
 const executablePath = process.env.OBSIDIAN_EXECUTABLE ?? "/Applications/Obsidian.app/Contents/MacOS/Obsidian";
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error("Run this suite with npm run test:e2e");
+const benchmarkArticleCount = Number(process.env.READPLACE_BENCHMARK_ARTICLES ?? 0);
+if (!Number.isSafeInteger(benchmarkArticleCount) || benchmarkArticleCount < 0) throw new Error("READPLACE_BENCHMARK_ARTICLES must be a nonnegative integer");
 
 test("real Obsidian authenticates, preserves notes and credentials, and recovers from failures", async ({}, testInfo) => {
+	if (benchmarkArticleCount > 0) test.setTimeout(600_000);
 	const fixture = await startReadplaceFixture({ accessTokenLifetimeSeconds: 3 });
 	fixture.articles.push(
 		{ id: "alpha", title: "Alpha", markdown: "# Alpha\n\nOriginal article.\n", contentVersion: "1" },
@@ -21,14 +24,14 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 	);
 	let obsidian;
 	let web;
-	const evidence = { boundary: "Real Obsidian and native URI dispatch; controlled HTTP server and captured browser-open intent", checks: [] };
+	const evidence = { boundary: "Real Obsidian and native URI dispatch; controlled HTTP server and captured browser-open intent", checks: [], secretStorageDiagnostics: [] };
 	try {
 		await execute(process.execPath, [npmCli, "run", "build"], { env: { ...process.env, READPLACE_SERVER_ORIGIN: fixture.origin } });
 		const root = testInfo.outputPath("obsidian");
 		const { vault, profile } = await prepareVault(root);
 		await mkdir(join(vault, "Readplace"));
 		await writeFile(join(vault, "Readplace", "Alpha.md"), "My existing note.\n");
-		obsidian = await launchObsidian({ profile, executablePath });
+		obsidian = await launchObsidian({ profile, executablePath, secretStorageDiagnostics: evidence.secretStorageDiagnostics });
 		let settings = await obsidian.settings();
 		evidence.obsidianVersion = await obsidian.page.title();
 		web = await chromium.launch({ channel: "chrome", headless: true });
@@ -38,10 +41,16 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 			try { return JSON.parse(await readFile(stateFile, "utf8")); } catch (error) { if (error.code === "ENOENT") return {}; throw error; }
 		};
 		const note = (name) => readFile(join(vault, "Readplace", name), "utf8");
-		const sync = async () => {
-			const previous = (await state()).lastSyncAt;
+		const sync = async ({ timeout } = {}) => {
+			let previous;
+			await expect(async () => { previous = (await state()).lastSyncAt; }).toPass({ timeout: 15_000 });
 			await settings.getByRole("button", { name: "Sync now", exact: true }).click();
-			await expect.poll(async () => (await state()).lastSyncAt).not.toBe(previous);
+			await expect(async () => {
+				const current = (await state()).lastSyncAt;
+				expect(typeof current).toBe("string");
+				expect(Number.isFinite(Date.parse(current))).toBe(true);
+				expect(current).not.toBe(previous);
+			}).toPass({ timeout: timeout ?? 15_000 });
 		};
 		const signIn = async (decision) => {
 			await obsidian.page.evaluate(() => {
@@ -113,7 +122,7 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 			const beforeRestart = obsidian;
 			obsidian = undefined;
 			await beforeRestart.close();
-			obsidian = await launchObsidian({ profile, executablePath });
+			obsidian = await launchObsidian({ profile, executablePath, secretStorageDiagnostics: evidence.secretStorageDiagnostics });
 			settings = await obsidian.settings();
 			await expect(settings.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
 			await expect.poll(() => fixture.expiredAccessTokenCount).toBeGreaterThan(0);
@@ -130,6 +139,63 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 			await sync();
 			evidence.checks.push("Rate limiting is reported and a later sync succeeds");
 		});
+
+		if (benchmarkArticleCount > 0) {
+			await test.step(`sync ${benchmarkArticleCount} articles from the controlled HTTP fixture`, async () => {
+				const paragraph = "A reading workflow starts with a question and keeps the original source close to the answer. Saving an article records a place to return, while a local Markdown copy makes the text available alongside working notes. Changes should preserve the reader's annotations and the links between related ideas.";
+				const body = Array.from({ length: 40 }, (_, index) => `## Observation ${index + 1}\n\n${paragraph}\n\n`).join("");
+				const benchmarkArticles = Array.from({ length: benchmarkArticleCount }, (_, index) => {
+					const number = String(index + 1).padStart(4, "0");
+					const title = `Benchmark article ${number}`;
+					return {
+						id: `benchmark-${number}`,
+						title,
+						markdown: `---\ntitle: ${title}\nsource: https://example.invalid/articles/${number}\nreadplace_content_status: ready\nreadplace_summary_status: ready\n---\n\n# ${title}\n\n## Summary\n\nA saved article about keeping useful sources with working notes.\n\n${body}`,
+						status: index % 2 === 0 ? "unread" : "read",
+						contentVersion: "1",
+					};
+				});
+				const markdownSizes = benchmarkArticles.map((article) => Buffer.byteLength(article.markdown));
+				expect(Math.min(...markdownSizes)).toBeGreaterThanOrEqual(10_000);
+				expect(Math.max(...markdownSizes)).toBeLessThanOrEqual(20_000);
+				const beforeNotes = await readdir(join(vault, "Readplace"));
+				const benchmark = {
+					boundary: "Real Obsidian with a controlled local HTTP fixture; not a live account or network performance benchmark. Live validation with about 2,000 saves remains pending.",
+					articleCount: benchmarkArticleCount,
+					existingArticleCount: fixture.articles.length,
+					markdownBytes: markdownSizes.reduce((total, size) => total + size, 0),
+					completed: false,
+				};
+				evidence.benchmark = benchmark;
+				fixture.articles.push(...benchmarkArticles);
+				fixture.setAccessTokenLifetimeSeconds(3600);
+				fixture.expireAccessToken();
+				const beforeRequests = fixture.requests.length;
+				const started = performance.now();
+				await sync({ timeout: 480_000 });
+				benchmark.elapsedMs = Math.round(performance.now() - started);
+				const firstRequests = fixture.requests.slice(beforeRequests);
+				benchmark.requestCount = firstRequests.length;
+				benchmark.markdownRequestCount = firstRequests.filter((request) => request.path.endsWith("/view")).length;
+				expect(benchmark.markdownRequestCount).toBe(benchmarkArticleCount);
+				const expectedNotes = [...beforeNotes, ...benchmarkArticles.map((article) => `${article.title}.md`)].sort();
+				expect((await readdir(join(vault, "Readplace"))).sort()).toEqual(expectedNotes);
+				for (const article of benchmarkArticles) expect(await note(`${article.title}.md`), article.title).toBe(article.markdown);
+				const beforeRepeatRequests = fixture.requests.length;
+				const repeatStarted = performance.now();
+				await sync({ timeout: 120_000 });
+				const repeatRequests = fixture.requests.slice(beforeRepeatRequests);
+				benchmark.repeat = {
+					elapsedMs: Math.round(performance.now() - repeatStarted),
+					requestCount: repeatRequests.length,
+					markdownRequestCount: repeatRequests.filter((request) => request.path.endsWith("/view")).length,
+				};
+				expect(benchmark.repeat.markdownRequestCount).toBe(0);
+				expect((await readdir(join(vault, "Readplace"))).sort()).toEqual(expectedNotes);
+				benchmark.completed = true;
+				evidence.checks.push(`${benchmarkArticleCount} controlled-fixture articles written exactly; repeated sync adds no notes or Markdown downloads`);
+			});
+		}
 
 		await test.step("sign out and reject a revoked grant without losing notes", async () => {
 			const before = await readdir(join(vault, "Readplace"));
