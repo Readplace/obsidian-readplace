@@ -1,0 +1,77 @@
+{
+  "boundary": "Real Obsidian opens the default browser to a controlled authorization endpoint; later consent uses captured browser-open intent and native URI dispatch. Browser external-app confirmation UI remains unverified.",
+  "checks": [
+    "Original window.open launches the native default browser and reaches the authorization endpoint without exchanging a token; external-app confirmation UI remains unverified",
+    "OAuth cancellation, PKCE exchange, state and OS URI handler",
+    "Bearer survives entry redirect; pagination includes read articles; repeat sync creates no duplicates or Markdown fetches; existing note preserved",
+    "Reader edits protected; reader rename remains tracked; server rename updates Obsidian links; deleted notes stay deleted; removed saves keep their notes",
+    "Secret storage survives process restart; naturally expired fixture access token refreshes without a new login",
+    "Rate limiting is reported and a later sync succeeds",
+    "Sign-out revokes credentials and retains notes; server revocation returns plugin to signed-out state"
+  ],
+  "secretStorageDiagnostics": [
+    {
+      "platform": "linux",
+      "processId": 4845,
+      "snapshots": [
+        {
+          "phase": "after-start",
+          "appId": "c0de1304aabbccdd",
+          "profileMatches": true,
+          "encryptionAvailable": false,
+          "secretIdCount": 0,
+          "accessTokenListed": false,
+          "refreshTokenListed": false,
+          "accessTokenPresent": false,
+          "refreshTokenPresent": false,
+          "encryptedEntryPresent": false,
+          "encryptedEntryLength": 0,
+          "legacyEntryPresent": false
+        },
+        {
+          "phase": "before-close",
+          "appId": "c0de1304aabbccdd",
+          "profileMatches": true,
+          "encryptionAvailable": false,
+          "secretIdCount": 2,
+          "accessTokenListed": true,
+          "refreshTokenListed": true,
+          "accessTokenPresent": true,
+          "refreshTokenPresent": true,
+          "encryptedEntryPresent": true,
+          "encryptedEntryLength": 144,
+          "legacyEntryPresent": false
+        }
+      ],
+      "errors": []
+    },
+    {
+      "platform": "linux",
+      "processId": 5509,
+      "snapshots": [
+        {
+          "phase": "after-start",
+          "appId": "c0de1304aabbccdd",
+          "profileMatches": true,
+          "encryptionAvailable": false,
+          "secretIdCount": 2,
+          "accessTokenListed": true,
+          "refreshTokenListed": true,
+          "accessTokenPresent": true,
+          "refreshTokenPresent": true,
+          "encryptedEntryPresent": true,
+          "encryptedEntryLength": 144,
+          "legacyEntryPresent": false
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "obsidianVersion": "New tab - vault - Obsidian 1.15.0",
+  "grantCounts": {
+    "authorization_code": 2,
+    "refresh_token": 2,
+    "revocation": 1
+  },
+  "requestCount": 65
+}

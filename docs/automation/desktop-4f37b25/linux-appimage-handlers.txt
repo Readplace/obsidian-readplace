@@ -1,0 +1,6 @@
+before.default-web-browser=com.google.Chrome.desktop
+before.http=com.google.Chrome.desktop
+before.https=com.google.Chrome.desktop
+after.default-web-browser=readplace-ci-chrome.desktop
+after.http=readplace-ci-chrome.desktop
+after.https=readplace-ci-chrome.desktop

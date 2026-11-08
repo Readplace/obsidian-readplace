@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "headSha": "4f37b257a7774c592e84fa5b8bf8deff3a647ec0",
+  "runUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285",
+  "boundary": "Installed Obsidian 1.15.0 opens the native default browser to a controlled authorization endpoint. Later consent uses captured browser-open intent and native URI dispatch. Browser external-app confirmation UI, live Readplace accounts, mobile devices, and Obsidian Sync remain unverified by this run.",
+  "notes": [
+    "Attempt 1 passed on all four desktop distributions, including the native default-browser launch check.",
+    "Linux used an explicit CI Chrome handler after recording com.google.Chrome.desktop as the prior default. The successful configuration does not isolate the cause of the earlier Linux browser-launch failures.",
+    "Only sanitized evidence.json files, Linux handler names, and categorized browser startup diagnostics are archived. Screenshots, traces, raw browser stderr, application profiles, and vaults are excluded."
+  ],
+  "results": [
+    {
+      "platform": "macos",
+      "attempt": 1,
+      "conclusion": "success",
+      "jobUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/job/128637627025",
+      "artifactId": 13605805496,
+      "artifactUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/artifacts/13605805496",
+      "artifactName": "obsidian-1.15.0-macos-evidence",
+      "artifactCreatedAt": "2026-11-08T05:20:38Z",
+      "evidenceFile": "macos-attempt-1.json",
+      "sha256": "d64f64ba2a67d40c4ca5a2f1bbdb69eea3d9c51ea5658e4f564985ed96df5d2e",
+      "attemptUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/attempts/1"
+    },
+    {
+      "platform": "linux-deb",
+      "attempt": 1,
+      "conclusion": "success",
+      "jobUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/job/128637626842",
+      "artifactId": 13605007913,
+      "artifactUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/artifacts/13605007913",
+      "artifactName": "obsidian-1.15.0-linux-deb-evidence",
+      "artifactCreatedAt": "2026-11-08T05:19:18Z",
+      "evidenceFile": "linux-deb-attempt-1.json",
+      "sha256": "4566cf491230a6f65288ad078c17e5577ef3f35914054f5c05a33ec623007e6e",
+      "attemptUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/attempts/1",
+      "browserDiagnostics": [
+        {
+          "file": "linux-deb-handlers.txt",
+          "sha256": "f6daa4bb3c35f10fd594a12f653fcaaccdaaafb621a380e1ad1fbd9fc1ed3707"
+        },
+        {
+          "file": "linux-deb-startup-diagnostics.json",
+          "sha256": "9163e65627e27f311d376a0e4dc5bf28395a44ac13c9e94fc602260d1cce0772"
+        }
+      ]
+    },
+    {
+      "platform": "linux-appimage",
+      "attempt": 1,
+      "conclusion": "success",
+      "jobUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/job/128637626763",
+      "artifactId": 13604999242,
+      "artifactUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/artifacts/13604999242",
+      "artifactName": "obsidian-1.15.0-linux-appimage-evidence",
+      "artifactCreatedAt": "2026-11-08T05:19:19Z",
+      "evidenceFile": "linux-appimage-attempt-1.json",
+      "sha256": "3696049f67262c669d64049762f7869a9f12a29cb43a949a244d57d8b16cd27b",
+      "attemptUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/attempts/1",
+      "browserDiagnostics": [
+        {
+          "file": "linux-appimage-handlers.txt",
+          "sha256": "f6daa4bb3c35f10fd594a12f653fcaaccdaaafb621a380e1ad1fbd9fc1ed3707"
+        },
+        {
+          "file": "linux-appimage-startup-diagnostics.json",
+          "sha256": "9163e65627e27f311d376a0e4dc5bf28395a44ac13c9e94fc602260d1cce0772"
+        }
+      ]
+    },
+    {
+      "platform": "windows",
+      "attempt": 1,
+      "conclusion": "success",
+      "jobUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/job/128637626899",
+      "artifactId": 13604873397,
+      "artifactUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/artifacts/13604873397",
+      "artifactName": "obsidian-1.15.0-windows-evidence",
+      "artifactCreatedAt": "2026-11-08T05:19:59Z",
+      "evidenceFile": "windows-attempt-1.json",
+      "sha256": "f48d65f01e7f2fe077d2dedbffa941d94cbddbe3dbe5191dc8180628a45f93df",
+      "attemptUrl": "https://github.com/Readplace/obsidian-readplace/actions/runs/42450219285/attempts/1"
+    }
+  ]
+}

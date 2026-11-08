@@ -32,6 +32,31 @@ Run `READPLACE_BENCHMARK_ARTICLES=2000 npm run test:e2e` to add a scale check wi
 
 For live staging validation, build with `READPLACE_SERVER_ORIGIN=https://hkncrxpii6.execute-api.ap-southeast-2.amazonaws.com npm run build`. A plain `npm run build` targets production. The origin is compiled into the bundle and is not a reader setting.
 
+## Live backend smoke
+
+The live smoke is opt-in and requires a verified test account with at least one saved article. Store credentials outside the repository in an owner-only JSON file (mode `0600` on macOS/Linux). Its `readplaceStaging` and `readplaceProduction` entries contain `email`, `password`, `origin`, and `status: "verified"`.
+
+```sh
+READPLACE_LIVE_ORIGIN=https://readplace.com \
+READPLACE_LIVE_CREDENTIALS_FILE=/secure/readplace-test-credentials.json \
+npm run test:e2e -- e2e/live-plugin.spec.mjs
+```
+
+Use the staging API origin above to select the staging account. The test checks live sign-in and cancellation, native callback delivery, downloaded-note integrity, credentials after restart, and sign-out after restart. It captures the browser-opening intent and uses a separate automated browser for consent. It does not wait for live token expiry or independently verify server-side revocation. It disables traces, video and screenshots, records sanitized `live-evidence.json`, signs out during cleanup, and restores the production build.
+
+## Android fixture automation
+
+The Android suite is opt-in. Use a dedicated device or emulator with Obsidian installed, a disposable vault named **Readplace Android Spike**, and community plugins enabled. Disconnect other Android devices and leave the vault signed out of Readplace. Set `OBSIDIAN_ANDROID_AX` to the absolute path of the Readplace monorepo's Android `scripts/ax.sh` wrapper.
+
+```sh
+OBSIDIAN_ANDROID_SERIAL=emulator-5558 \
+OBSIDIAN_ANDROID_VAULT='Readplace Android Spike' \
+OBSIDIAN_ANDROID_AX=/path/to/readplace.com/projects/native-apps/android/scripts/ax.sh \
+npm run test:e2e -- e2e/android-plugin.spec.mjs
+```
+
+The test uses Playwright's Android WebView API, a controlled server through `adb reverse`, and a temporary plugin build that permits mobile only inside that vault. It checks background/return callbacks, exact Markdown, repeated sync, process restart, token refresh, and sign-out. Consent runs in desktop Chrome after capturing the browser-opening intent; this does not validate the Android browser, its confirmation dialogs, live accounts, or PKCE state after the operating system kills the process. The test restores the previous plugin files and removes its port forwarding. Start and stop the dedicated emulator separately. A passing fixture test does not change the released manifest's desktop-only status.
+
 ## Conventions
 
 - Dependencies are injected. Only the composition root touches the real Obsidian objects, so everything else runs against fakes.
