@@ -23,8 +23,12 @@ test("Android fixture sync preserves credentials across restart and notes across
 	expect(process.env.OBSIDIAN_ANDROID_VAULT, "Explicitly confirm the disposable vault with OBSIDIAN_ANDROID_VAULT").toBe(fixtureVault);
 	const wrapper = process.env.OBSIDIAN_ANDROID_AX;
 	expect(typeof wrapper === "string" && isAbsolute(wrapper), "OBSIDIAN_ANDROID_AX must be the absolute path to the Android ax.sh wrapper").toBe(true);
+	const nativeBrowser = process.env.OBSIDIAN_ANDROID_NATIVE_BROWSER === "1";
 	const evidence = {
-		boundary: "Controlled local fixture reached by adb reverse. Browser-open intent is captured in Android Obsidian; consent runs in desktop Chrome. HOME backgrounds Obsidian and an Android VIEW intent returns to the same process. Actual Android browser launch, Android browser consent UI, external-app confirmation UI, live accounts, and PKCE survival after OS process death are not validated.",
+		boundary: nativeBrowser
+			? "Controlled local fixture reached by adb reverse. Original window.open opens Playwright-managed Android Chrome; consent and Return to Obsidian use the real browser page. Chrome first-run UI is disabled by Playwright. No native confirmation is automated without inspecting it. Live accounts and PKCE survival after OS process death are not validated."
+			: "Controlled local fixture reached by adb reverse. Browser-open intent is captured in Android Obsidian; consent runs in desktop Chrome. HOME backgrounds Obsidian and an Android VIEW intent returns to the same process. Actual Android browser launch, Android browser consent UI, external-app confirmation UI, live accounts, and PKCE survival after OS process death are not validated.",
+		browserMode: nativeBrowser ? "android-chrome" : "captured-desktop-chrome",
 		vault: fixtureVault,
 		checks: [],
 		backgroundRoundTrips: [],
@@ -35,6 +39,9 @@ test("Android fixture sync preserves credentials across restart and notes across
 	let device;
 	let page;
 	let web;
+	let androidBrowser;
+	let chromeCommandLineSnapshot;
+	let chromeCommandLineTouched = false;
 	let fixture;
 	let reversePort;
 	let previousPlugin;
@@ -55,6 +62,20 @@ test("Android fixture sync preserves credentials across restart and notes across
 	const requireOnlySelectedDevice = async () => {
 		const devices = (await adb(["devices"])).split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("List of devices"));
 		expect(devices, "Playwright enumerates every attached device; disconnect unrelated devices before this opt-in test").toEqual([`${serial}\tdevice`]);
+	};
+	const captureNativeUi = async () => {
+		await writeFile(testInfo.outputPath("android-native-failure.png"), await device.screenshot());
+		try {
+			await adb(["shell", "uiautomator", "dump", "/sdcard/readplace-native-return.xml"]);
+			const ui = await adb(["shell", "cat", "/sdcard/readplace-native-return.xml"]);
+			const sanitized = ui
+				.replace(/(?:(?:https?|obsidian):\/\/|(?:127\.0\.0\.1|localhost):\d+\/)[^\s"<>]+/g, (url) => url.split("?")[0])
+				.replace(/((?:[?&]|&amp;)(?:code|state|approval|code_challenge|code_verifier|access_token|refresh_token|token)=)[^&\s"<>]*/gi, "$1[redacted]");
+			await writeFile(testInfo.outputPath("android-native-failure.xml"), sanitized);
+			evidence.nativeUiCaptured = true;
+		} finally {
+			await adb(["shell", "rm", "-f", "/sdcard/readplace-native-return.xml"]);
+		}
 	};
 	const requireVault = async () => {
 		expect(await page.evaluate((name) => app.vault.getName() === name, fixtureVault), "Only the named disposable vault may be changed").toBe(true);
@@ -149,16 +170,30 @@ test("Android fixture sync preserves credentials across restart and notes across
 		await settings();
 		await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
 		evidence.checks.push("Fixture bundle installed only in the named Android vault; repository build and manifest unchanged");
-		web = await chromium.launch({ channel: "chrome", headless: true });
-		const browserPage = await web.newPage();
+		let desktopPage;
+		if (nativeBrowser) {
+			phase = "Android Chrome preparation";
+			chromeCommandLineSnapshot = await adb(["shell", "if [ -f /data/local/tmp/chrome-command-line ]; then base64 /data/local/tmp/chrome-command-line; else printf '__absent__'; fi"]);
+			expect(chromeCommandLineSnapshot === "__absent__" || /^[A-Za-z0-9+/=\s]*$/.test(chromeCommandLineSnapshot)).toBe(true);
+			chromeCommandLineTouched = true;
+			androidBrowser = await device.launchBrowser({ pkg: "com.android.chrome" });
+		}
+		else {
+			web = await chromium.launch({ channel: "chrome", headless: true });
+			desktopPage = await web.newPage();
+		}
 		const signIn = async (decision) => {
+			phase = `${nativeBrowser ? "native Android" : "captured"} ${decision}: foreground Obsidian and open authorization`;
 			await requireVault();
 			await adb(["shell", "am", "start", "-n", "md.obsidian/.MainActivity"]);
 			await expect.poll(foreground).toEqual({ known: true, obsidian: true });
-			await page.evaluate(() => {
-				window.__readplaceAndroidOriginalOpen ??= window.open;
-				window.__readplaceAndroidAuthorizationUrl = undefined;
-				window.open = (url) => { window.__readplaceAndroidAuthorizationUrl = String(url); return null; };
+			const before = await adb(["shell", "pidof md.obsidian || true"]);
+			await page.evaluate((capture) => {
+				if (capture) {
+					window.__readplaceAndroidOriginalOpen ??= window.open;
+					window.__readplaceAndroidAuthorizationUrl = undefined;
+					window.open = (url) => { window.__readplaceAndroidAuthorizationUrl = String(url); return null; };
+				} else if (window.__readplaceAndroidOriginalOpen) throw new Error("An earlier browser capture hook is still installed");
 				window.__readplaceAndroidNoticeObserver?.disconnect();
 				window.__readplaceAndroidNotices = { cancelled: false, signedIn: false };
 				window.__readplaceAndroidNoticeObserver = new MutationObserver(() => {
@@ -168,29 +203,58 @@ test("Android fixture sync preserves credentials across restart and notes across
 					}
 				});
 				window.__readplaceAndroidNoticeObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
-			});
+			}, !nativeBrowser);
 			await page.getByRole("button", { name: "Sign in", exact: true }).click();
-			await expect.poll(() => page.evaluate(() => Boolean(window.__readplaceAndroidAuthorizationUrl))).toBe(true);
-			const authorization = new URL(await page.evaluate(() => {
-				const url = window.__readplaceAndroidAuthorizationUrl;
-				delete window.__readplaceAndroidAuthorizationUrl;
-				return url;
-			}));
+			let browserPage = desktopPage;
+			let authorization;
+			if (nativeBrowser) {
+				phase = `native Android ${decision}: authorization page and Chrome foreground`;
+				await expect.poll(() => {
+					browserPage = androidBrowser.pages().find((candidate) => {
+						try { const url = new URL(candidate.url()); return url.origin === fixture.origin && url.pathname === "/oauth/authorize"; } catch { return false; }
+					});
+					return Boolean(browserPage);
+				}, { timeout: 30_000 }).toBe(true);
+				authorization = new URL(browserPage.url());
+				await expect.poll(foreground).toEqual({ known: true, obsidian: false });
+				await expect.poll(async () => /(?:mResumedActivity|topResumedActivity)[^\n]*com\.android\.chrome/.test(await adb(["shell", "dumpsys", "activity", "activities"]))).toBe(true);
+				evidence.androidChromeUserAgent = await browserPage.evaluate(() => navigator.userAgent);
+			} else {
+				await expect.poll(() => page.evaluate(() => Boolean(window.__readplaceAndroidAuthorizationUrl))).toBe(true);
+				authorization = new URL(await page.evaluate(() => {
+					const url = window.__readplaceAndroidAuthorizationUrl;
+					delete window.__readplaceAndroidAuthorizationUrl;
+					return url;
+				}));
+				await adb(["shell", "input", "keyevent", "KEYCODE_HOME"]);
+				await expect.poll(foreground).toEqual({ known: true, obsidian: false });
+			}
 			expect(authorization.origin === fixture.origin && authorization.pathname === "/oauth/authorize").toBe(true);
 			expect(authorization.searchParams.get("redirect_uri") === `${fixture.origin}/oauth/obsidian`).toBe(true);
-			const before = await adb(["shell", "pidof md.obsidian || true"]);
-			await adb(["shell", "input", "keyevent", "KEYCODE_HOME"]);
-			await expect.poll(foreground).toEqual({ known: true, obsidian: false });
-			await browserPage.goto(authorization.href);
+			if (!nativeBrowser) await browserPage.goto(authorization.href);
+			phase = `${nativeBrowser ? "native Android" : "captured"} ${decision}: browser consent and handoff link`;
 			await browserPage.getByRole("button", { name: decision, exact: true }).click();
 			const handoff = new URL(await browserPage.getByRole("link", { name: "Return to Obsidian", exact: true }).getAttribute("href"));
 			expect(handoff.protocol === "obsidian:" && handoff.hostname === "readplace-auth").toBe(true);
 			expect(handoff.searchParams.get("state") === authorization.searchParams.get("state")).toBe(true);
 			expect(decision === "Cancel" ? handoff.searchParams.get("error") === "access_denied" : Boolean(handoff.searchParams.get("code"))).toBe(true);
 			await requireVault();
-			const quotedUri = `'${handoff.href.replaceAll("'", "'\\''")}'`;
-			await adb(["shell", `am start -a android.intent.action.VIEW -d ${quotedUri} -p md.obsidian`]);
-			await expect.poll(foreground).toEqual({ known: true, obsidian: true });
+			if (nativeBrowser) {
+				phase = `native Android ${decision}: click Return to Obsidian`;
+				await browserPage.getByRole("link", { name: "Return to Obsidian", exact: true }).click({ noWaitAfter: true });
+				phase = `native Android ${decision}: foreground after Return link`;
+				try {
+					await expect.poll(foreground).toEqual({ known: true, obsidian: true });
+				} catch {
+					evidence.nativeReturnBlocked = { decision, nativeConfirmationAutomated: false };
+					throw new Error("Native return did not foreground Obsidian; inspect captured native UI before adding dialog automation");
+				}
+			} else {
+				const quotedUri = `'${handoff.href.replaceAll("'", "'\\''")}'`;
+				await adb(["shell", `am start -a android.intent.action.VIEW -d ${quotedUri} -p md.obsidian`]);
+				await expect.poll(foreground).toEqual({ known: true, obsidian: true });
+			}
+			phase = `${nativeBrowser ? "native Android" : "captured"} ${decision}: same-process callback result`;
 			expect(await adb(["shell", "pidof md.obsidian || true"])).toBe(before);
 			await expect.poll(() => page.evaluate((key) => window.__readplaceAndroidNotices[key], decision === "Cancel" ? "cancelled" : "signedIn")).toBe(true);
 			await page.evaluate(() => {
@@ -199,7 +263,7 @@ test("Android fixture sync preserves credentials across restart and notes across
 				delete window.__readplaceAndroidNotices;
 			});
 			await settings();
-			evidence.backgroundRoundTrips.push({ decision, pid: before, sameProcessResumed: true, homeScreenUsed: true, desktopConsentUsed: true, androidBrowserUsed: false });
+			evidence.backgroundRoundTrips.push({ decision, pid: before, sameProcessResumed: true, homeScreenUsed: !nativeBrowser, desktopConsentUsed: !nativeBrowser, androidBrowserUsed: nativeBrowser, realReturnLinkClicked: nativeBrowser, nativeConfirmationAutomated: false });
 		};
 		const state = () => page.evaluate(async (path) => JSON.parse(await app.vault.adapter.read(path)), `${pluginFolder}/data.json`);
 		const sync = async () => {
@@ -232,7 +296,10 @@ test("Android fixture sync preserves credentials across restart and notes across
 		await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
 		expect(fixture.grantCounts.authorization_code).toBe(1);
 		expect(await credentialsPresent()).toEqual([true, true]);
-		evidence.checks.push("Captured PKCE intent, desktop consent cancellation and approval, HOME backgrounding, and Android native callback to the same process");
+		evidence.checks.push(nativeBrowser
+			? "Original window.open reaches foreground Android Chrome; cancellation and approval use real browser consent and Return to Obsidian links, with the same Obsidian process resumed and no native confirmation interaction required"
+			: "Captured PKCE intent, desktop consent cancellation and approval, HOME backgrounding, and Android native callback to the same process");
+		if (androidBrowser) { await androidBrowser.close(); androidBrowser = undefined; }
 		phase = "exact Markdown and repeat sync";
 		await sync();
 		evidence.noteCount = await verifyNotes();
@@ -266,8 +333,12 @@ test("Android fixture sync preserves credentials across restart and notes across
 		await page.screenshot({ path: testInfo.outputPath("android-signed-out.png") });
 		evidence.checks.push("Sign-out revokes fixture credentials, remains signed out after restart, and preserves every fixture note");
 		evidence.completed = true;
-	} catch {
+	} catch (error) {
 		evidence.failedPhase = phase;
+		evidence.failure = { operation: /^(?:locator|page|browserContext|androidDevice)\.\w+/.exec(error.message)?.[0] ?? "assertion-or-other", timeout: /timeout/i.test(error.message) };
+		if (nativeBrowser && device) {
+			try { await captureNativeUi(); } catch { evidence.nativeUiCaptured = false; }
+		}
 		throw new Error(`Android fixture failed during ${phase}; authorization and callback values are omitted`);
 	} finally {
 		if (installed && page && syncInProgress) {
@@ -325,6 +396,16 @@ test("Android fixture sync preserves credentials across restart and notes across
 		} else if (installed) evidence.cleanup.push("Plugin restoration incomplete because the app connection was lost");
 		if (reversePort) {
 			try { await adb(["reverse", "--remove", reversePort]); } catch { evidence.cleanup.push("Fixture adb reverse removal failed"); }
+		}
+		if (androidBrowser) {
+			try { await androidBrowser.close(); } catch { evidence.cleanup.push("Android Chrome connection did not close cleanly"); }
+		}
+		if (chromeCommandLineTouched) {
+			try {
+				if (chromeCommandLineSnapshot === "__absent__") await adb(["shell", "rm", "-f", "/data/local/tmp/chrome-command-line"]);
+				else await adb(["shell", `printf '%s' '${chromeCommandLineSnapshot.replace(/\s/g, "")}' | base64 -d > /data/local/tmp/chrome-command-line`]);
+				evidence.cleanup.push("Android Chrome command-line file restored to its previous state");
+			} catch { evidence.cleanup.push("Android Chrome command-line restoration failed"); }
 		}
 		const closing = await Promise.allSettled([device?.close(), web?.close(), fixture?.close()]);
 		if (closing.some((result) => result.status === "rejected")) evidence.cleanup.push("A test connection did not close cleanly");
