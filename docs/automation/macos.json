@@ -1,0 +1,24 @@
+{
+  "recordedAt": "2026-11-08T04:31:16.681Z",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "command": "npm run test:e2e",
+  "result": "passed",
+  "durationMs": 44009.221,
+  "boundary": "Real Obsidian and native URI dispatch; controlled HTTP server and captured browser-open intent",
+  "checks": [
+    "OAuth cancellation, PKCE exchange, state and OS URI handler",
+    "Bearer survives entry redirect; pagination includes read articles; repeat sync creates no duplicates or Markdown fetches; existing note preserved",
+    "Reader edits protected; reader rename remains tracked; server rename updates Obsidian links; deleted notes stay deleted; removed saves keep their notes",
+    "Secret storage survives process restart; naturally expired fixture access token refreshes without a new login",
+    "Rate limiting is reported and a later sync succeeds",
+    "Sign-out revokes credentials and retains notes; server revocation returns plugin to signed-out state"
+  ],
+  "obsidianVersion": "New tab - vault - Obsidian 1.13.7",
+  "grantCounts": {
+    "authorization_code": 2,
+    "refresh_token": 2,
+    "revocation": 1
+  },
+  "requestCount": 62
+}

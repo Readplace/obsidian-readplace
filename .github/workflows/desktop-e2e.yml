@@ -1,0 +1,137 @@
+name: Desktop E2E
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Obsidian 1.15.0 (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-deb
+            os: ubuntu-24.04
+            asset: obsidian_1.15.0_amd64.deb
+          - platform: linux-appimage
+            os: ubuntu-24.04
+            asset: Obsidian-1.15.0.AppImage
+          - platform: windows
+            os: windows-latest
+            asset: Obsidian-1.15.0.exe
+          - platform: macos
+            os: macos-latest
+            asset: Obsidian-1.15.0.dmg
+    env:
+      OBSIDIAN_VERSION: 1.15.0
+      OBSIDIAN_ASSET: ${{ matrix.asset }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chrome
+        run: npm exec -- playwright install --with-deps chrome
+      - name: Download official Obsidian release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/obsidian-installer"
+          gh release download "v$OBSIDIAN_VERSION" --repo obsidianmd/obsidian-releases --pattern "$OBSIDIAN_ASSET" --dir "$RUNNER_TEMP/obsidian-installer"
+      - name: Install Linux desktop services
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb dbus-x11 xdg-utils desktop-file-utils
+          printf 'OBSIDIAN_PROFILE=%s/.config/obsidian\n' "$HOME" >> "$GITHUB_ENV"
+      - name: Install Debian package and register its URI handler
+        if: matrix.platform == 'linux-deb'
+        run: |
+          installer="$RUNNER_TEMP/obsidian-installer/$OBSIDIAN_ASSET"
+          sudo apt-get install --yes "$installer"
+          package=$(dpkg-deb --field "$installer" Package)
+          desktop_entry=$(dpkg-query --listfiles "$package" | awk '/\/applications\/.*\.desktop$/ { print; exit }')
+          test -n "$desktop_entry"
+          desktop-file-validate "$desktop_entry"
+          desktop_name=$(basename "$desktop_entry")
+          xdg-mime default "$desktop_name" x-scheme-handler/obsidian
+          test "$(xdg-mime query default x-scheme-handler/obsidian)" = "$desktop_name"
+          executable=$(command -v obsidian)
+          test -x "$executable"
+          printf 'OBSIDIAN_EXECUTABLE=%s\n' "$executable" >> "$GITHUB_ENV"
+      - name: Extract AppImage and register its URI handler
+        if: matrix.platform == 'linux-appimage'
+        run: |
+          installer="$RUNNER_TEMP/obsidian-installer/$OBSIDIAN_ASSET"
+          chmod +x "$installer"
+          mkdir -p "$RUNNER_TEMP/obsidian-appimage"
+          cd "$RUNNER_TEMP/obsidian-appimage"
+          "$installer" --appimage-extract > /dev/null
+          executable="$RUNNER_TEMP/obsidian-appimage/squashfs-root/AppRun"
+          test -x "$executable"
+          mkdir -p "$HOME/.local/share/applications"
+          cat > "$HOME/.local/share/applications/obsidian.desktop" <<DESKTOP
+          [Desktop Entry]
+          Type=Application
+          Name=Obsidian
+          Exec="$executable" --no-sandbox %u
+          Terminal=false
+          MimeType=x-scheme-handler/obsidian;
+          Categories=Office;
+          DESKTOP
+          desktop-file-validate "$HOME/.local/share/applications/obsidian.desktop"
+          update-desktop-database "$HOME/.local/share/applications"
+          xdg-mime default obsidian.desktop x-scheme-handler/obsidian
+          test "$(xdg-mime query default x-scheme-handler/obsidian)" = obsidian.desktop
+          printf 'OBSIDIAN_EXECUTABLE=%s\n' "$executable" >> "$GITHUB_ENV"
+      - name: Install macOS app and register Launch Services
+        if: runner.os == 'macOS'
+        run: |
+          mountpoint="$RUNNER_TEMP/obsidian-mount"
+          mkdir -p "$mountpoint"
+          hdiutil attach "$RUNNER_TEMP/obsidian-installer/$OBSIDIAN_ASSET" -nobrowse -readonly -mountpoint "$mountpoint"
+          trap 'hdiutil detach "$mountpoint"' EXIT
+          ditto "$mountpoint/Obsidian.app" /Applications/Obsidian.app
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/Obsidian.app
+          printf 'OBSIDIAN_EXECUTABLE=%s\n' /Applications/Obsidian.app/Contents/MacOS/Obsidian >> "$GITHUB_ENV"
+          printf 'OBSIDIAN_PROFILE=%s/Library/Application Support/obsidian\n' "$HOME" >> "$GITHUB_ENV"
+      - name: Install Windows app with its URI registration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "obsidian-installer/$env:OBSIDIAN_ASSET"
+          $installDirectory = Join-Path $env:RUNNER_TEMP 'Obsidian'
+          $installation = Start-Process -FilePath $installer -ArgumentList @('/S', '/currentuser', "/D=$installDirectory") -Wait -PassThru
+          if ($installation.ExitCode -ne 0) { throw "Obsidian installer exited with $($installation.ExitCode)" }
+          $executable = Join-Path $installDirectory 'Obsidian.exe'
+          if (-not (Test-Path $executable)) { throw "Missing installed executable: $executable" }
+          "OBSIDIAN_EXECUTABLE=$executable" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OBSIDIAN_PROFILE=$(Join-Path $env:APPDATA 'obsidian')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Run desktop automation in Linux display session
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run --auto-servernum npm run test:e2e -- --global-timeout=600000
+      - name: Run desktop automation
+        if: runner.os != 'Linux'
+        run: npm run test:e2e -- --global-timeout=600000
+      - name: Upload automation evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: obsidian-${{ env.OBSIDIAN_VERSION }}-${{ matrix.platform }}-evidence
+          path: |
+            test-results/results.json
+            test-results/*/evidence.json
+            test-results/*/*.png
+            test-results/*/trace.zip
+          if-no-files-found: warn
+          retention-days: 14

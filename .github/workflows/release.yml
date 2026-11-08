@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { readFileSync } from "node:fs";
+          const manifest = JSON.parse(readFileSync("manifest.json", "utf8"));
+          const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+          assert.equal(process.env.RELEASE_TAG, manifest.version, "Release tag must equal manifest.version without a v prefix");
+          assert.equal(packageJson.version, manifest.version, "package.json and manifest.json must have the same version");
+          NODE
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          tag: ${{ github.ref_name }}
+        run: gh release create "$tag" --title="$tag" --draft main.js manifest.json
