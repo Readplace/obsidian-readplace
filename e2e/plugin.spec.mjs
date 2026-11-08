@@ -24,7 +24,7 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 	);
 	let obsidian;
 	let web;
-	const evidence = { boundary: "Real Obsidian and native URI dispatch; controlled HTTP server and captured browser-open intent", checks: [], secretStorageDiagnostics: [] };
+	const evidence = { boundary: "Real Obsidian opens the default browser to a controlled authorization endpoint; later consent uses captured browser-open intent and native URI dispatch. Browser external-app confirmation UI remains unverified.", checks: [], secretStorageDiagnostics: [] };
 	try {
 		await execute(process.execPath, [npmCli, "run", "build"], { env: { ...process.env, READPLACE_SERVER_ORIGIN: fixture.origin } });
 		const root = testInfo.outputPath("obsidian");
@@ -34,6 +34,14 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 		obsidian = await launchObsidian({ profile, executablePath, secretStorageDiagnostics: evidence.secretStorageDiagnostics });
 		let settings = await obsidian.settings();
 		evidence.obsidianVersion = await obsidian.page.title();
+		await test.step("open the authorization page in the native default browser", async () => {
+			const before = fixture.requests.length;
+			await settings.getByRole("button", { name: "Sign in", exact: true }).click();
+			await expect.poll(() => fixture.requests.slice(before).filter((request) => request.method === "GET" && request.path === "/oauth/authorize").length, { timeout: 30_000 }).toBeGreaterThan(0);
+			expect(fixture.requests.slice(before).filter((request) => request.method === "POST" && request.path === "/oauth/token")).toHaveLength(0);
+			expect(fixture.grantCounts.authorization_code).toBe(0);
+			evidence.checks.push("Original window.open launches the native default browser and reaches the authorization endpoint without exchanging a token; external-app confirmation UI remains unverified");
+		});
 		web = await chromium.launch({ channel: "chrome", headless: true });
 		const browserPage = await web.newPage();
 		const stateFile = join(vault, ".obsidian", "plugins", "readplace", "data.json");

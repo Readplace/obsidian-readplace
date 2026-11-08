@@ -100,7 +100,7 @@ Report a security issue through the [support page](https://readplace.com/support
 
 The desktop automation opens the real Obsidian application in a separate test vault. It uses Playwright for the settings and consent pages, and the operating system's `obsidian://` handler for the sign-in callback. It checks pagination, repeated sync, existing files, reader edits, deleted notes, renames and backlinks, credentials across a restart, token refresh, rate limiting, and revocation.
 
-The HTTP server in this suite is a controlled fixture. It checks the application's integration with Obsidian; it does not establish that a deployed Readplace environment works. The suite captures the browser-opening intent before opening the consent page with Playwright, so the system browser launch and its external-app confirmation still need a separate check.
+The HTTP server in this suite is a controlled fixture. It checks the application's integration with Obsidian; it does not establish that a deployed Readplace environment works. The first sign-in uses the original browser-opening action and checks that the system browser reaches the authorization page. Later sign-ins capture the browser-opening intent and open consent with Playwright. The browser's external-app confirmation still needs a separate check.
 
 The [recorded macOS run](./docs/automation/macos.json) passed. The Desktop E2E workflow runs the same suite on macOS, Windows, and Linux's Debian and AppImage distributions, and uploads screenshots and results. See [Contributing](./CONTRIBUTING.md) for running it locally. Mobile, live staging and production authentication, two-device Obsidian Sync, and a live 2,000-save benchmark remain release checks.
 
