@@ -54,6 +54,47 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes xvfb dbus-x11 xdg-utils desktop-file-utils
           printf 'OBSIDIAN_PROFILE=%s/.config/obsidian\n' "$HOME" >> "$GITHUB_ENV"
+      - name: Configure Linux default browser
+        if: runner.os == 'Linux'
+        run: |
+          dbus-run-session -- xvfb-run --auto-servernum bash <<'BROWSER'
+          set -euo pipefail
+          browser_root="$RUNNER_TEMP/readplace-native-browser"
+          mkdir -p "$browser_root" "$HOME/.local/share/applications"
+          {
+            printf 'before.default-web-browser=%s\n' "$(xdg-settings get default-web-browser || true)"
+            printf 'before.http=%s\n' "$(xdg-mime query default x-scheme-handler/http || true)"
+            printf 'before.https=%s\n' "$(xdg-mime query default x-scheme-handler/https || true)"
+          } | tee "$browser_root/handlers.txt"
+          chrome_executable=$(command -v google-chrome)
+          test -x "$chrome_executable"
+          cat > "$browser_root/launch-chrome" <<SCRIPT
+          #!/usr/bin/env bash
+          exec "$chrome_executable" --no-sandbox --no-first-run --no-default-browser-check --user-data-dir="$browser_root/profile" "\$@" 2>>"$browser_root/chrome-stderr.log"
+          SCRIPT
+          chmod +x "$browser_root/launch-chrome"
+          cat > "$HOME/.local/share/applications/readplace-ci-chrome.desktop" <<DESKTOP
+          [Desktop Entry]
+          Type=Application
+          Name=Chrome for Readplace automation
+          Exec=$browser_root/launch-chrome %u
+          Terminal=false
+          MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+          Categories=Network;WebBrowser;
+          DESKTOP
+          desktop-file-validate "$HOME/.local/share/applications/readplace-ci-chrome.desktop"
+          update-desktop-database "$HOME/.local/share/applications"
+          xdg-settings set default-web-browser readplace-ci-chrome.desktop
+          xdg-mime default readplace-ci-chrome.desktop text/html x-scheme-handler/http x-scheme-handler/https
+          test "$(xdg-settings check default-web-browser readplace-ci-chrome.desktop)" = yes
+          test "$(xdg-mime query default x-scheme-handler/http)" = readplace-ci-chrome.desktop
+          test "$(xdg-mime query default x-scheme-handler/https)" = readplace-ci-chrome.desktop
+          {
+            printf 'after.default-web-browser=%s\n' "$(xdg-settings get default-web-browser)"
+            printf 'after.http=%s\n' "$(xdg-mime query default x-scheme-handler/http)"
+            printf 'after.https=%s\n' "$(xdg-mime query default x-scheme-handler/https)"
+          } | tee -a "$browser_root/handlers.txt"
+          BROWSER
       - name: Install Debian package and register its URI handler
         if: matrix.platform == 'linux-deb'
         run: |
@@ -123,6 +164,28 @@ jobs:
       - name: Run desktop automation
         if: runner.os != 'Linux'
         run: npm run test:e2e -- --global-timeout=600000
+      - name: Collect Linux browser diagnostics
+        if: always() && runner.os == 'Linux'
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdir, readFile, writeFile } from 'node:fs/promises';
+          import { join } from 'node:path';
+          const source = join(process.env.RUNNER_TEMP, 'readplace-native-browser');
+          const destination = 'test-results/native-browser';
+          await mkdir(destination, { recursive: true });
+          const handlers = await readFile(join(source, 'handlers.txt'), 'utf8').catch(() => 'Handler diagnostics unavailable\n');
+          await writeFile(join(destination, 'handlers.txt'), handlers);
+          const stderr = await readFile(join(source, 'chrome-stderr.log'), 'utf8').catch(() => '');
+          const patterns = [
+            ['sandbox-error', /No usable sandbox|Running as root without --no-sandbox|Failed to move to new namespace/i],
+            ['display-error', /Missing X server|cannot open display|Unable to open X display/i],
+            ['profile-lock-error', /ProcessSingleton|SingletonLock/i],
+            ['dbus-error', /Failed to connect to the bus|Failed to connect to socket.*dbus/i],
+            ['process-crash', /FATAL:|Trace\/breakpoint trap|Segmentation fault/i],
+          ];
+          const diagnostics = { stderrPresent: stderr.length > 0, categories: patterns.filter(([, pattern]) => pattern.test(stderr)).map(([category]) => category) };
+          await writeFile(join(destination, 'startup-diagnostics.json'), JSON.stringify(diagnostics, null, 2));
+          NODE
       - name: Upload automation evidence
         if: always()
         uses: actions/upload-artifact@v5
@@ -133,5 +196,7 @@ jobs:
             test-results/*/evidence.json
             test-results/*/*.png
             test-results/*/trace.zip
+            test-results/native-browser/handlers.txt
+            test-results/native-browser/startup-diagnostics.json
           if-no-files-found: warn
           retention-days: 14
