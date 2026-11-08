@@ -102,7 +102,9 @@ The desktop automation opens the real Obsidian application in a separate test va
 
 The HTTP server in this suite is a controlled fixture. It checks the application's integration with Obsidian; it does not establish that a deployed Readplace environment works. The first sign-in uses the original browser-opening action and checks that the system browser reaches the authorization page. Later sign-ins capture the browser-opening intent and open consent with Playwright. The browser's external-app confirmation still needs a separate check.
 
-The [recorded macOS run](./docs/automation/macos.json) passed. The Desktop E2E workflow runs the same suite on macOS, Windows, and Linux's Debian and AppImage distributions, and uploads screenshots and results. See [Contributing](./CONTRIBUTING.md) for running it locally. Mobile, live staging and production authentication, two-device Obsidian Sync, and a live 2,000-save benchmark remain release checks.
+The [recorded macOS run](./docs/automation/macos.json) passed. The Desktop E2E workflow runs the same suite on macOS, Windows, and Linux's Debian and AppImage distributions, and uploads screenshots and results. See [Contributing](./CONTRIBUTING.md) for running it locally.
+
+The live smoke test passed against Readplace's staging and production servers on 2026-11-08: login, consent cancellation, approval, sync, a restart and sign-out, with a real account. It doesn't exercise token refresh or revocation, which only the fixture covers. Mobile isn't supported: an Android emulator completed the sign-in round trip through Android Chrome against the fixture, and iOS hasn't been tested.
 
 The [recorded desktop CI run](./docs/automation/desktop-4f37b25/index.json) passed on all four platforms, including native browser launch. Linux uses an explicitly configured Chrome handler in the disposable CI desktop. The archived evidence includes its configuration and the exact tested commit.
 
