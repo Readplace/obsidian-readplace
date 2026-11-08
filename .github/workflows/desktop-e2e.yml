@@ -84,7 +84,7 @@ jobs:
           [Desktop Entry]
           Type=Application
           Name=Obsidian
-          Exec="$executable" --no-sandbox %u
+          Exec=$executable --no-sandbox %u
           Terminal=false
           MimeType=x-scheme-handler/obsidian;
           Categories=Office;

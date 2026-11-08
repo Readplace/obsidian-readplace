@@ -85,10 +85,23 @@ export async function launchObsidian({ profile, executablePath }) {
 				return settings;
 			},
 			async close() {
-				await browser.close();
-				if (child.exitCode === null) {
-					child.kill("SIGTERM");
-					await new Promise((resolve) => child.once("exit", resolve));
+				try {
+					if (child.exitCode === null && child.signalCode === null) {
+						if (process.platform === "win32") {
+							for (const other of browser.contexts().flatMap((context) => context.pages())) {
+								if (other !== page) await other.close();
+							}
+							await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `$application = Get-Process -Id ${child.pid}; if (-not $application.CloseMainWindow()) { throw 'Obsidian main window could not be closed' }`]);
+							await expect.poll(() => child.exitCode, { timeout: 15_000 }).toBe(0);
+						} else {
+							await browser.close();
+							child.kill("SIGTERM");
+							await expect.poll(() => child.exitCode !== null || child.signalCode !== null).toBe(true);
+						}
+					}
+				} finally {
+					await browser.close();
+					if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 				}
 			},
 		};
