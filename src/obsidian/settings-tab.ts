@@ -25,7 +25,7 @@ export interface SettingRow {
 	addToggle(build: (toggle: ToggleControl) => unknown): unknown;
 }
 
-function renderItem(input: { item: SettingItem; row: SettingRow }): void {
+export function renderItem(input: { item: SettingItem; row: SettingRow }): void {
 	const { item, row } = input;
 	if (item.kind === "heading") {
 		row.setName(item.text);
@@ -56,5 +56,7 @@ function renderItem(input: { item: SettingItem; row: SettingRow }): void {
 }
 
 export function renderSettings(input: { items: SettingItem[]; addRow: () => SettingRow }): void {
-	for (const item of input.items) renderItem({ item, row: input.addRow() });
+	for (const item of input.items) {
+		if (item.kind === "heading" || item.visible()) renderItem({ item, row: input.addRow() });
+	}
 }

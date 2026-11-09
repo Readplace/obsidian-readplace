@@ -81,6 +81,8 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 			expect(fixture.grantCounts.authorization_code).toBe(0);
 			await signIn("Approve");
 			await expect(settings.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+			await expect(settings.getByRole("button", { name: "Sign out", exact: true })).toHaveCount(1);
+			await expect(settings.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
 			expect(fixture.grantCounts.authorization_code).toBe(1);
 			evidence.checks.push("OAuth cancellation, PKCE exchange, state and OS URI handler");
 		});

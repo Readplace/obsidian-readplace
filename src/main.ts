@@ -1,15 +1,16 @@
 /* c8 ignore start -- composition root: wires the real Obsidian objects to the ports */
-import { App, Notice, normalizePath, Plugin, PluginSettingTab, requestUrl, Setting } from "obsidian";
+import { App, Notice, normalizePath, Plugin, PluginSettingTab, requireApiVersion, requestUrl, Setting, type SettingDefinitionItem } from "obsidian";
 import { fetchAuthorizationServer } from "./auth/authorization-server";
 import { initSignIn } from "./auth/sign-in";
 import { initTokenClient } from "./auth/tokens";
 import { AUTOMATIC_SYNC_INTERVAL_MINUTES, OAUTH_PROTOCOL_ACTION, SERVER_ORIGIN } from "./config";
 import { initPluginActions, type PluginActions } from "./obsidian/plugin-actions";
 import { initSecretTokens } from "./obsidian/secret-tokens";
-import { renderSettings } from "./obsidian/settings-tab";
+import { buildSettingDefinitions } from "./obsidian/setting-definitions";
+import { renderItem, renderSettings } from "./obsidian/settings-tab";
 import { initVaultNotes, watchRenames } from "./obsidian/vault-notes";
 import type { SendHttp } from "./ports";
-import { buildSettingsItems, type SettingsActions } from "./settings/settings-items";
+import { buildSettingsItems, type SettingItem, type SettingsActions } from "./settings/settings-items";
 import { initSyncRunner } from "./sync/run-sync";
 import { parsePluginData } from "./sync/sync-state";
 
@@ -35,14 +36,27 @@ class ReadplaceSettingTab extends PluginSettingTab {
 	constructor(
 		app: App,
 		plugin: Plugin,
-		private readonly render: (containerEl: HTMLElement) => void,
+		private readonly items: () => SettingItem[],
 	) {
 		super(app, plugin);
 	}
 
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return buildSettingDefinitions({ items: this.items(), renderRow: ({ item, row }) => renderItem({ item, row }) });
+	}
+
 	display(): void {
 		this.containerEl.empty();
-		this.render(this.containerEl);
+		renderSettings({ items: this.items(), addRow: () => new Setting(this.containerEl) });
+	}
+
+	accountChanged(): void {
+		if (requireApiVersion("1.13.0")) {
+			this.update();
+			this.refreshDomState();
+		} else {
+			this.display();
+		}
 	}
 }
 
@@ -82,16 +96,13 @@ export default class ReadplacePlugin extends Plugin {
 			},
 			normalizePath,
 			accountChanged: () => {
-				settingTab.display();
+				settingTab.accountChanged();
 			},
 		});
 
-		const settingTab = new ReadplaceSettingTab(this.app, this, (containerEl) => {
-			renderSettings({
-				items: buildSettingsItems({ signedIn: tokens.isSignedIn(), settings: data.get().settings, actions: settingsActionsOf(actions) }),
-				addRow: () => new Setting(containerEl),
-			});
-		});
+		const settingTab = new ReadplaceSettingTab(this.app, this, () =>
+			buildSettingsItems({ signedIn: () => tokens.isSignedIn(), settings: data.get().settings, actions: settingsActionsOf(actions) }),
+		);
 		this.addSettingTab(settingTab);
 
 		this.registerObsidianProtocolHandler(OAUTH_PROTOCOL_ACTION, ({ action: _action, ...params }) => {

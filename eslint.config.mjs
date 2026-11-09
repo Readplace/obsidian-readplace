@@ -45,8 +45,11 @@ export default defineConfig([
 				extraFileExtensions: [".json"],
 			},
 		},
+	},
+	{
+		files: ["src/main.ts"],
 		rules: {
-			"obsidianmd/settings-tab/prefer-setting-definitions": "off",
+			"@typescript-eslint/no-deprecated": "off",
 		},
 	},
 	{

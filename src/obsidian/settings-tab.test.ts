@@ -36,7 +36,7 @@ describe("renderSettings", () => {
 		const { rows, addRow } = fakeRows();
 		const items: SettingItem[] = [
 			{ kind: "heading", text: "Account" },
-			{ kind: "info", name: "Signed in", description: "Connected." },
+			{ kind: "info", name: "Signed in", description: "Connected.", visible: () => true },
 		];
 
 		renderSettings({ items, addRow });
@@ -51,7 +51,7 @@ describe("renderSettings", () => {
 		const { rows, addRow } = fakeRows();
 		const onClick = () => undefined;
 
-		renderSettings({ items: [{ kind: "button", name: "Sync now", description: "Copies.", label: "Sync", onClick }], addRow });
+		renderSettings({ items: [{ kind: "button", name: "Sync now", description: "Copies.", visible: () => true, label: "Sync", onClick }], addRow });
 
 		expect(rows).toEqual([{ name: "Sync now", description: "Copies.", label: "Sync", click: onClick }]);
 	});
@@ -60,7 +60,7 @@ describe("renderSettings", () => {
 		const { rows, addRow } = fakeRows();
 		const onChange = (_value: string) => undefined;
 
-		renderSettings({ items: [{ kind: "text", name: "Folder", description: "Where.", value: "Notes", placeholder: "Readplace", onChange }], addRow });
+		renderSettings({ items: [{ kind: "text", name: "Folder", description: "Where.", visible: () => true, value: "Notes", placeholder: "Readplace", onChange }], addRow });
 
 		expect(rows).toEqual([{ name: "Folder", description: "Where.", placeholder: "Readplace", textValue: "Notes", changeText: onChange }]);
 	});
@@ -69,8 +69,24 @@ describe("renderSettings", () => {
 		const { rows, addRow } = fakeRows();
 		const onChange = (_value: boolean) => undefined;
 
-		renderSettings({ items: [{ kind: "toggle", name: "Sync on open", description: "When.", value: false, onChange }], addRow });
+		renderSettings({ items: [{ kind: "toggle", name: "Sync on open", description: "When.", visible: () => true, value: false, onChange }], addRow });
 
 		expect(rows).toEqual([{ name: "Sync on open", description: "When.", toggleValue: false, changeToggle: onChange }]);
+	});
+
+	it("skips an item whose visible predicate answers false and keeps the heading", () => {
+		const { rows, addRow } = fakeRows();
+		const items: SettingItem[] = [
+			{ kind: "heading", text: "Account" },
+			{ kind: "button", name: "Sign in", description: "Opens.", visible: () => false, label: "Sign in", onClick: () => undefined },
+			{ kind: "info", name: "Signed in", description: "Connected.", visible: () => true },
+		];
+
+		renderSettings({ items, addRow });
+
+		expect(rows).toEqual([
+			{ name: "Account", heading: true },
+			{ name: "Signed in", description: "Connected." },
+		]);
 	});
 });
