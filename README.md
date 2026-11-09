@@ -26,11 +26,10 @@ Copies the articles you've saved in [Readplace](https://readplace.com) into your
 
 ## Setup
 
-The plugin isn't in Obsidian's community directory yet, so it's installed from source:
+1. In Obsidian, open **Settings → Community plugins** and choose **Browse**.
+2. Search for **Readplace**, choose **Install**, then **Enable**.
 
-1. Run `npm ci` and `npm run build` in this repository.
-2. Copy `main.js` and `manifest.json` into `.obsidian/plugins/readplace/` inside your vault.
-3. In Obsidian, open **Settings → Community plugins** and turn on **Readplace**.
+The plugin's page in the directory is https://community.obsidian.md/plugins/readplace.
 
 Then connect your account:
 
