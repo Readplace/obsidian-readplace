@@ -143,7 +143,7 @@ export async function launchObsidian({ profile, executablePath, secretStorageDia
 				for (const candidate of pages) {
 					if (await candidate.locator(".vertical-tab-header-group-items").count()) settings = candidate;
 				}
-				await settings.locator(".vertical-tab-nav-item").filter({ hasText: /^Readplace$/ }).click();
+				await settings.locator('.vertical-tab-nav-item[data-setting-id="readplace"]').click();
 				await expect(settings.getByRole("button", { name: "Sync now", exact: true })).toBeVisible();
 				return settings;
 			},

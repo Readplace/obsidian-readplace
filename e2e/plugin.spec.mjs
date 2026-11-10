@@ -87,6 +87,16 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 			evidence.checks.push("OAuth cancellation, PKCE exchange, state and OS URI handler");
 		});
 
+		await test.step("find Readplace's settings through Obsidian's settings search", async () => {
+			const search = settings.getByPlaceholder("Search settings...");
+			await search.fill("Refresh all notes");
+			const group = settings.locator(".setting-search-result-group").filter({ has: settings.locator(".setting-search-result-tab-label").filter({ hasText: /^Readplace$/ }) });
+			await expect(group.locator(".setting-search-result-item")).toHaveText(["Refresh all notes"]);
+			await search.fill("");
+			await expect(settings.getByRole("button", { name: "Sync now", exact: true })).toBeVisible();
+			evidence.checks.push("Obsidian settings search finds Readplace's settings");
+		});
+
 		await test.step("sync every page and preserve existing files", async () => {
 			await sync();
 			expect((await readdir(join(vault, "Readplace"))).sort()).toEqual(["Alpha (2).md", "Alpha.md", "Beta.md", "Delta.md", "Gamma.md"]);
