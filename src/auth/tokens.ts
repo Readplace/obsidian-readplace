@@ -136,8 +136,8 @@ export function initTokenClient(deps: {
 
 	const signOut: TokenClient["signOut"] = async () => {
 		const refreshToken = deps.secrets.get(SECRET_IDS.refreshToken);
-		if (refreshToken) await revoke(refreshToken).catch(() => undefined);
 		clearSecrets();
+		if (refreshToken) await revoke(refreshToken).catch(() => undefined);
 	};
 
 	const isSignedIn: TokenClient["isSignedIn"] = () =>

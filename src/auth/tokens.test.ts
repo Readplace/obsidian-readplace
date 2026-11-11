@@ -33,7 +33,11 @@ function fakeSecrets(tokens: { access?: string; refresh?: string } = { access: "
 	return { store, access: () => secrets.get(SECRET_IDS.accessToken), refresh: () => secrets.get(SECRET_IDS.refreshToken) };
 }
 
-function fakeHttp(routes: { api: (request: HttpRequest) => HttpResponse; token?: () => HttpResponse | Promise<HttpResponse>; revoke?: () => HttpResponse }) {
+function fakeHttp(routes: {
+	api: (request: HttpRequest) => HttpResponse | Promise<HttpResponse>;
+	token?: () => HttpResponse | Promise<HttpResponse>;
+	revoke?: () => HttpResponse | Promise<HttpResponse>;
+}) {
 	const requests: HttpRequest[] = [];
 	const sendHttp: SendHttp = async (request) => {
 		requests.push(request);
@@ -258,13 +262,21 @@ describe("storeGrant", () => {
 });
 
 describe("signOut", () => {
-	it("posts the refresh token and client id as JSON to the revocation endpoint, then clears both secrets", async () => {
+	it("clears both secrets, then posts the refresh token and client id as JSON to the revocation endpoint", async () => {
 		const secrets = fakeSecrets();
-		const http = fakeHttp({ api: () => answer(200), revoke: () => answer(200) });
+		const heldWhileRevoking: { access: string | undefined; refresh: string | undefined }[] = [];
+		const http = fakeHttp({
+			api: () => answer(200),
+			revoke: () => {
+				heldWhileRevoking.push({ access: secrets.access(), refresh: secrets.refresh() });
+				return answer(200);
+			},
+		});
 		const tokens = initTokenClient({ sendHttp: http.sendHttp, secrets: secrets.store, server: okServer });
 
 		await tokens.signOut();
 
+		expect(heldWhileRevoking).toEqual([{ access: "", refresh: "" }]);
 		const [revoke] = http.to(REVOKE_URL);
 		expect(revoke?.method).toBe("POST");
 		expect(revoke?.headers).toEqual({ "Content-Type": "application/json" });
@@ -332,6 +344,42 @@ describe("signOut", () => {
 		expect(secrets.access()).toBe("");
 		expect(secrets.refresh()).toBe("");
 		expect(client.isSignedIn()).toBe(false);
+	});
+
+	it("never posts the refresh token when a request is answered 401 while sign-out is revoking", async () => {
+		const secrets = fakeSecrets();
+		let finishFirstApiCall: (response: HttpResponse) => void = () => undefined;
+		const firstApiAnswer = new Promise<HttpResponse>((resolve) => {
+			finishFirstApiCall = resolve;
+		});
+		let finishRevoke: (response: HttpResponse) => void = () => undefined;
+		const revokeAnswer = new Promise<HttpResponse>((resolve) => {
+			finishRevoke = resolve;
+		});
+		let apiCalls = 0;
+		const http = fakeHttp({
+			api: (request) => {
+				apiCalls += 1;
+				return apiCalls === 1 ? firstApiAnswer : staleUntilRefreshed(request);
+			},
+			token: () => GRANT,
+			revoke: () => revokeAnswer,
+		});
+		const client = initTokenClient({ sendHttp: http.sendHttp, secrets: secrets.store, server: okServer });
+
+		const pending = client.authorizedSend({ url: API_URL, method: "GET" });
+		const signingOut = client.signOut();
+		while (http.to(REVOKE_URL).length === 0) await Promise.resolve();
+		finishFirstApiCall(answer(401));
+		const result = await pending;
+		finishRevoke(answer(200));
+		await signingOut;
+
+		expect(http.to(TOKEN_URL)).toHaveLength(0);
+		expect(JSON.parse(http.to(REVOKE_URL)[0]?.body ?? "")).toEqual({ token: "refresh-1", client_id: "obsidian-plugin" });
+		expect(result).toEqual({ kind: "signed-out" });
+		expect(secrets.access()).toBe("");
+		expect(secrets.refresh()).toBe("");
 	});
 });
 
