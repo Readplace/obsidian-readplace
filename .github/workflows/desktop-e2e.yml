@@ -40,7 +40,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Chrome
+        if: runner.os != 'Linux'
         run: npm exec -- playwright install --with-deps chrome
+      - name: Check preinstalled Chrome
+        if: runner.os == 'Linux'
+        run: google-chrome --version
       - name: Download official Obsidian release
         shell: bash
         env:
@@ -51,6 +55,19 @@ jobs:
       - name: Install Linux desktop services
         if: runner.os == 'Linux'
         run: |
+          sudo tee /etc/apt/sources.list.d/ubuntu.sources > /dev/null <<'SOURCES'
+          Types: deb
+          URIs: http://archive.ubuntu.com/ubuntu
+          Suites: noble noble-updates noble-backports
+          Components: main restricted universe multiverse
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+          Types: deb
+          URIs: http://security.ubuntu.com/ubuntu
+          Suites: noble-security
+          Components: main restricted universe multiverse
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SOURCES
           sudo apt-get update
           sudo apt-get install --yes xvfb dbus-x11 xdg-utils desktop-file-utils
           printf 'OBSIDIAN_PROFILE=%s/.config/obsidian\n' "$HOME" >> "$GITHUB_ENV"
