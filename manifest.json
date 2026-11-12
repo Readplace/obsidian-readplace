@@ -1,7 +1,7 @@
 {
 	"id": "readplace",
 	"name": "Readplace",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"minAppVersion": "1.11.4",
 	"description": "Sync articles you saved in Readplace into your vault as Markdown notes, with the full text, the AI summary and reading status.",
 	"author": "Readplace",
