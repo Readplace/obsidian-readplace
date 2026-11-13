@@ -55,7 +55,7 @@ OBSIDIAN_ANDROID_AX=/path/to/readplace.com/projects/native-apps/android/scripts/
 npm run test:e2e -- e2e/android-plugin.spec.mjs
 ```
 
-The test uses Playwright's Android WebView API, a controlled server through `adb reverse`, and a temporary plugin build that permits mobile only inside that vault. It checks background/return callbacks, exact Markdown, repeated sync, process restart, token refresh, and sign-out. Consent runs in desktop Chrome after capturing the browser-opening intent; this does not validate the Android browser, its confirmation dialogs, live accounts, or PKCE state after the operating system kills the process. The test restores the previous plugin files and removes its port forwarding. Start and stop the dedicated emulator separately. A passing fixture test does not change the released manifest's desktop-only status.
+The test uses Playwright's Android WebView API, a controlled server through `adb reverse`, and a temporary plugin build installed only inside that vault. It checks background/return callbacks, exact Markdown, repeated sync, process restart, token refresh, and sign-out. Consent runs in desktop Chrome after capturing the browser-opening intent; this does not validate the Android browser, its confirmation dialogs, live accounts, or PKCE state after the operating system kills the process. The test restores the previous plugin files and removes its port forwarding. Start and stop the dedicated emulator separately. A passing fixture test does not show that a deployed Readplace server answers `/` with the collection, which mobile sync needs.
 
 ## Conventions
 

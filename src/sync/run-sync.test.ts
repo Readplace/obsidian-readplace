@@ -72,7 +72,7 @@ function inMemoryVault(initial: Record<string, string> = {}) {
 }
 
 function syncHarness(input: { routes?: Record<string, HttpResponse>; accessToken?: string; files?: Record<string, string> } = {}) {
-	const routes: Record<string, HttpResponse> = { [ROOT]: { status: 303, headers: { Location: "/queue" }, text: "" }, ...input.routes };
+	const routes: Record<string, HttpResponse> = { ...input.routes };
 	const requests: HttpRequest[] = [];
 	const hooks: { beforeAnswer?: (url: string) => void } = {};
 	const secrets: Partial<Record<SecretId, string>> = {
@@ -83,7 +83,7 @@ function syncHarness(input: { routes?: Record<string, HttpResponse>; accessToken
 		sendHttp: async (request) => {
 			requests.push(request);
 			hooks.beforeAnswer?.(request.url);
-			const response = routes[request.url];
+			const response = routes[request.url] ?? (request.url === ROOT ? routes[LIST] : undefined);
 			if (response === undefined) throw new Error(`transport failure for ${request.url}`);
 			return response;
 		},

@@ -6,5 +6,5 @@
 	"description": "Sync articles you saved in Readplace into your vault as Markdown notes, with the full text, the AI summary and reading status.",
 	"author": "Readplace",
 	"authorUrl": "https://readplace.com",
-	"isDesktopOnly": true
+	"isDesktopOnly": false
 }

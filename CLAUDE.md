@@ -7,7 +7,7 @@ An Obsidian community plugin that copies a reader's Readplace saves into their v
 | Rule | Why |
 |---|---|
 | Ports are injected, and only the composition root value-imports `obsidian` | The `obsidian` npm package is types only, with no runtime module. A value import anywhere else can't load under test. |
-| No `node:*` imports | The code must stay able to run on mobile for the day `isDesktopOnly` flips. |
+| No `node:*` imports | The plugin runs on mobile (`isDesktopOnly` is false), where Node isn't available. Mobile support is pending verification on a device. |
 | zod at the HTTP boundary with `safeParse`, never for internal types; parse the response text, not `json` | Server responses are the only untyped input, and the `json` getter is typed `any`. |
 | No `as`, except `as const` and a test fake bound to a fixed signature | A cast hides an upstream type change. |
 | Named parameters where 2 consecutive parameters share a type | Swapped positional arguments compile. |

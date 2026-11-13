@@ -105,8 +105,8 @@ test("real Obsidian authenticates, preserves notes and credentials, and recovers
 			const before = fixture.requests.filter((request) => request.path.endsWith("/view")).length;
 			await sync();
 			expect(fixture.requests.filter((request) => request.path.endsWith("/view")).length).toBe(before);
-			expect(fixture.requests.filter((request) => request.path.startsWith("/queue")).every((request) => request.hasAuthorization)).toBe(true);
-			evidence.checks.push("Bearer survives entry redirect; pagination includes read articles; repeat sync creates no duplicates or Markdown fetches; existing note preserved");
+			expect(fixture.requests.filter((request) => request.path === "/" || request.path.startsWith("/queue")).every((request) => request.hasAuthorization)).toBe(true);
+			evidence.checks.push("Bearer reaches the collection at the entry point; pagination includes read articles; repeat sync creates no duplicates or Markdown fetches; existing note preserved");
 		});
 
 		await test.step("keep reader edits, follow renames, update links, and respect deleted notes", async () => {

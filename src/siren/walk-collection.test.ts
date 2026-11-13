@@ -70,15 +70,24 @@ describe("fetchCollection", () => {
 		expect(requests[0]?.headers["Accept"]).toBe("application/vnd.siren+json");
 	});
 
-	it("follows the 303 at the root and re-sends the bearer", async () => {
+	it("reads the collection the root answers, without a hop", async () => {
+		const { tokens, requests } = clientAnswering({ answers: { "https://readplace.com/": [sirenPage({ ids: ["a"] })] } });
+
+		const outcome = await fetchCollection({ tokens, url: "https://readplace.com/" });
+
+		expect(outcome.kind === "collection" && outcome.collection.articles[0]?.readHref).toBe("https://readplace.com/queue/a/view");
+		expect(requests.map((request) => [request.url, request.headers["Authorization"]])).toEqual([["https://readplace.com/", "Bearer access-1"]]);
+	});
+
+	it("follows a 303 and re-sends the bearer", async () => {
 		const { tokens, requests } = clientAnswering({
 			answers: {
-				"https://readplace.com/": [answer(303, { Location: "/queue" })],
+				"https://readplace.com/moved": [answer(303, { Location: "/queue" })],
 				"https://readplace.com/queue": [sirenPage({ ids: ["a"] })],
 			},
 		});
 
-		const outcome = await fetchCollection({ tokens, url: "https://readplace.com/" });
+		const outcome = await fetchCollection({ tokens, url: "https://readplace.com/moved" });
 
 		expect(outcome.kind === "collection" && outcome.collection.articles[0]?.readHref).toBe("https://readplace.com/queue/a/view");
 		expect(requests.map((request) => request.headers["Authorization"])).toEqual(["Bearer access-1", "Bearer access-1"]);
@@ -87,12 +96,12 @@ describe("fetchCollection", () => {
 	it("reads a lower-case location header", async () => {
 		const { tokens } = clientAnswering({
 			answers: {
-				"https://readplace.com/": [answer(303, { location: "/queue" })],
+				"https://readplace.com/moved": [answer(303, { location: "/queue" })],
 				"https://readplace.com/queue": [sirenPage({ ids: [] })],
 			},
 		});
 
-		expect((await fetchCollection({ tokens, url: "https://readplace.com/" })).kind).toBe("collection");
+		expect((await fetchCollection({ tokens, url: "https://readplace.com/moved" })).kind).toBe("collection");
 	});
 
 	it("gives up after the hop limit", async () => {

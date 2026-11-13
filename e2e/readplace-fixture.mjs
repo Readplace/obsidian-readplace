@@ -225,16 +225,12 @@ export async function startReadplaceFixture({ port = 0, pageSize = 2, accessToke
 			send(response, 401, { error: "invalid_token" }, "application/json", { "WWW-Authenticate": 'Bearer error="invalid_token"' });
 			return;
 		}
-		if (request.method === "GET" && url.pathname === "/") {
-			redirect(response, "/queue");
-			return;
-		}
-		if (request.method === "GET" && url.pathname === "/queue") {
+		if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/queue")) {
 			if (!request.headers.accept?.includes(SIREN)) {
 				send(response, 406, { error: "siren_required" });
 				return;
 			}
-			const page = collection(url);
+			const page = collection(new URL(`/queue${url.search}`, url));
 			send(response, page ? 200 : 400, page ?? { error: "invalid_cursor" }, SIREN);
 			return;
 		}

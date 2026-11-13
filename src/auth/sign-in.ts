@@ -16,9 +16,12 @@ export type SignInOutcome =
 	| { kind: "unavailable"; status: FailureStatus };
 
 export interface SignIn {
+	prepare(): Promise<void>;
 	begin(options: { screenHint: "login" | "signup" }): Promise<{ kind: "opened" } | { kind: "unavailable"; status: FailureStatus }>;
 	complete(params: Record<string, string>): Promise<SignInOutcome>;
 }
+
+type Prepared = { kind: "ready"; authorizeUrl: string; verifier: string; state: string } | { kind: "unavailable"; status: FailureStatus };
 
 const HandoffParams = z.object({
 	code: z.string().optional(),
@@ -34,8 +37,10 @@ export function initSignIn(deps: {
 	randomBytes: RandomBytes;
 }): SignIn {
 	let pending: { verifier: string; state: string } | undefined;
+	let prepared: Prepared | undefined;
+	let preparing: Promise<Prepared> | undefined;
 
-	const begin: SignIn["begin"] = async ({ screenHint }) => {
+	const build = async (): Promise<Prepared> => {
 		const found = await deps.server();
 		if (found.kind !== "ok") return found;
 
@@ -48,11 +53,37 @@ export function initSignIn(deps: {
 		authorizeUrl.searchParams.set("code_challenge", await challengeFor(verifier));
 		authorizeUrl.searchParams.set("code_challenge_method", "S256");
 		authorizeUrl.searchParams.set("state", state);
-		if (screenHint === "signup") authorizeUrl.searchParams.set("screen_hint", "signup");
+		return { kind: "ready", authorizeUrl: authorizeUrl.toString(), verifier, state };
+	};
 
-		pending = { verifier, state };
+	const prepare = (): Promise<Prepared> => {
+		preparing ??= build()
+			.catch((): Prepared => ({ kind: "unavailable", status: "malformed" }))
+			.then((next) => {
+				prepared = next;
+				preparing = undefined;
+				return next;
+			});
+		return preparing;
+	};
+
+	const open = (ready: Prepared, screenHint: "login" | "signup"): { kind: "opened" } | { kind: "unavailable"; status: FailureStatus } => {
+		if (ready.kind !== "ready") return ready;
+		const authorizeUrl = new URL(ready.authorizeUrl);
+		if (screenHint === "signup") authorizeUrl.searchParams.set("screen_hint", "signup");
+		pending = { verifier: ready.verifier, state: ready.state };
 		deps.openInBrowser(authorizeUrl.toString());
+		void prepare();
 		return { kind: "opened" };
+	};
+
+	const begin: SignIn["begin"] = async ({ screenHint }) => {
+		const ready = prepared;
+		prepared = undefined;
+		if (ready?.kind === "ready") return open(ready, screenHint);
+		const next = await prepare();
+		prepared = undefined;
+		return open(next, screenHint);
 	};
 
 	const exchange = async (options: { tokenEndpoint: string; code: string; verifier: string }): Promise<SignInOutcome> => {
@@ -99,5 +130,11 @@ export function initSignIn(deps: {
 		return exchange({ tokenEndpoint: found.server.tokenEndpoint, code, verifier });
 	};
 
-	return { begin, complete };
+	return {
+		prepare: async () => {
+			await prepare();
+		},
+		begin,
+		complete,
+	};
 }

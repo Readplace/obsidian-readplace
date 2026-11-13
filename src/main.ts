@@ -82,6 +82,7 @@ export default class ReadplacePlugin extends Plugin {
 			},
 			randomBytes: (length) => crypto.getRandomValues(new Uint8Array(length)),
 		});
+		void signIn.prepare();
 		const vault = initVaultNotes({ vault: this.app.vault, fileManager: this.app.fileManager, normalizePath });
 		const runner = initSyncRunner({ tokens, vault, data, origin: SERVER_ORIGIN, clock: () => new Date() });
 		this.register(() => runner.stop());

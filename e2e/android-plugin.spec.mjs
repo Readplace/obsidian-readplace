@@ -145,7 +145,6 @@ test("Android fixture sync preserves credentials across restart and notes across
 		const folder = `Readplace Android Fixture ${randomUUID()}`;
 		evidence.bundleSha256 = createHash("sha256").update(main).digest("hex");
 		evidence.fixtureFolder = folder;
-		evidence.manifestOverride = { isDesktopOnly: false };
 		previousPlugin = await page.evaluate(async ({ names, folder }) => {
 			const files = {};
 			for (const name of names) {
@@ -162,14 +161,14 @@ test("Android fixture sync preserves credentials across restart and notes across
 			await app.plugins.disablePluginAndSave("readplace");
 			for (const directory of [".obsidian/plugins", pluginFolder]) if (!await app.vault.adapter.exists(directory)) await app.vault.adapter.mkdir(directory);
 			await app.vault.adapter.write(`${pluginFolder}/main.js`, main);
-			await app.vault.adapter.write(`${pluginFolder}/manifest.json`, JSON.stringify({ ...manifest, isDesktopOnly: false }));
+			await app.vault.adapter.write(`${pluginFolder}/manifest.json`, JSON.stringify(manifest));
 			await app.vault.adapter.write(`${pluginFolder}/data.json`, JSON.stringify({ version: 1, settings: { folder, automaticSync: false, syncOnOpen: false }, notes: {}, lastSyncAt: null }));
 			await app.plugins.loadManifests();
 			await app.plugins.enablePluginAndSave("readplace");
 		}, { main, manifest, pluginFolder, folder });
 		await settings();
 		await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
-		evidence.checks.push("Fixture bundle installed only in the named Android vault; repository build and manifest unchanged");
+		evidence.checks.push("Fixture bundle installed only in the named Android vault; repository build unchanged");
 		let desktopPage;
 		if (nativeBrowser) {
 			phase = "Android Chrome preparation";
@@ -307,7 +306,7 @@ test("Android fixture sync preserves credentials across restart and notes across
 		await sync();
 		await verifyNotes();
 		expect(fixture.requests.filter((request) => request.path.endsWith("/view")).length).toBe(markdownRequests);
-		expect(fixture.requests.filter((request) => request.path.startsWith("/queue")).every((request) => request.hasAuthorization)).toBe(true);
+		expect(fixture.requests.filter((request) => request.path === "/" || request.path.startsWith("/queue")).every((request) => request.hasAuthorization)).toBe(true);
 		evidence.checks.push("All fixture pages including read articles sync as exact Markdown; repeat sync produces no duplicates or extra Markdown downloads");
 		await page.screenshot({ path: testInfo.outputPath("android-signed-in.png") });
 		phase = "signed-in process restart and token refresh";

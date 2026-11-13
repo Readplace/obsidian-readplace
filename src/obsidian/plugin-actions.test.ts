@@ -29,6 +29,7 @@ function harness(options: {
 		},
 	};
 	const signIn: SignIn = {
+		prepare: async () => undefined,
 		begin: async (hint) => {
 			begins.push(hint);
 			return options.begun ?? { kind: "opened" };
@@ -70,6 +71,15 @@ describe("initPluginActions", () => {
 
 			expect(begins).toEqual([{ screenHint: "signup" }]);
 			expect(notices).toEqual([]);
+		});
+
+		it("starts the sign-in before any await, so the click still counts as the reader's gesture", async () => {
+			const { actions, begins } = harness();
+
+			const begun = actions.beginSignIn({ screenHint: "login" });
+
+			expect(begins).toEqual([{ screenHint: "login" }]);
+			await begun;
 		});
 
 		it("tells the reader when sign-in cannot start", async () => {
