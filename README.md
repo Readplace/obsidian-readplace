@@ -22,7 +22,7 @@ Copies the articles you've saved in [Readplace](https://readplace.com) into your
 ## Requirements
 
 - A Readplace account.
-- Obsidian 1.11.4 or later, on desktop or on Obsidian's mobile apps. Mobile sync needs the Readplace server to answer `/` with the collection instead of a redirect, and this build hasn't been run on an iOS device yet.
+- Obsidian 1.11.4 or later, on desktop or on Obsidian's mobile apps.
 
 ## Setup
 
@@ -104,7 +104,7 @@ The HTTP server in this suite is a controlled fixture. It checks the application
 
 The [recorded macOS run](./docs/automation/macos.json) passed. The Desktop E2E workflow runs the same suite on macOS, Windows, and Linux's Debian and AppImage distributions, and uploads screenshots and results. See [Contributing](./CONTRIBUTING.md) for running it locally.
 
-The live smoke test passed against Readplace's staging and production servers on 2026-11-08: login, consent cancellation, approval, sync, a restart and sign-out, with a real account. It doesn't exercise token refresh or revocation, which only the fixture covers. On mobile, an Android emulator completed the sign-in round trip through Android Chrome against the fixture. On iOS, with Obsidian 1.15.0 against staging on 2026-11-12, version 0.1.2 loaded but neither signed in nor synced: its browser opened only after a network request finished, and the request that followed the server's redirect from `/` arrived without the access token. The plugin now prepares the sign-in link ahead and opens the browser at once, and syncing on iOS needs the Readplace server to answer `/` with the collection instead of a redirect. A test build that opened the browser first and started sync without the redirect signed in and synced 11 articles. The released build hasn't been run on an iOS device yet.
+The live smoke test passed against Readplace's staging and production servers on 2026-11-08: login, consent cancellation, approval, sync, a restart and sign-out, with a real account. It doesn't exercise token refresh or revocation, which only the fixture covers. On mobile, an Android emulator completed the sign-in round trip through Android Chrome against the fixture. On iOS, with Obsidian 1.15.0 against staging on 2026-11-12, version 0.1.2 loaded but neither signed in nor synced: its browser opened only after a network request finished, and the request that followed the server's redirect from `/` arrived without the access token. The plugin now prepares the sign-in link ahead and opens the browser at once, and the server now answers `/` with the collection. A test build that opened the browser the same way signed in on that iPhone. On 2026-11-13, this build refreshed its expired access token and synced 11 articles there against staging.
 
 The [recorded desktop CI run](./docs/automation/desktop-4f37b25/index.json) passed on all four platforms, including native browser launch. Linux uses an explicitly configured Chrome handler in the disposable CI desktop. The archived evidence includes its configuration and the exact tested commit.
 
